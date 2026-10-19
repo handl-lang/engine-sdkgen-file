@@ -7,7 +7,7 @@ use handl_plugin_sdkgen_emitter_file::FileEmitter;
 /// The canonical language, assembled from the dev-dep data crate.
 fn lang() -> std::sync::Arc<handl_language::Language> {
     std::sync::Arc::new(
-        handl_kit_data_canonical::language_from_yaml()
+        handl_kit_data_prelude::language_from_yaml()
             .expect("canonical language assembles"),
     )
 }

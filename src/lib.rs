@@ -11,7 +11,7 @@ use std::sync::Arc;
 ///
 /// The [`Language`] used to canonicalize emitted source is injected at
 /// construction (ADR-0128 §"The 0.8 seam"): the emitter lives in platform,
-/// so it must not link `handl-kit-data-canonical` itself — the host
+/// so it must not link `handl-kit-data-prelude` itself — the host
 /// (`hnl sdkgen`) assembles the canonical language and hands it in.
 pub struct FileEmitter {
     lang: Arc<Language>,
@@ -621,7 +621,7 @@ fn is_numeric_descriptor(d: &str) -> bool {
 }
 
 /// Canonical Handl keywords (mirrors `lex.keyword.*` in
-/// `handl-kit-data-canonical/data/lexer_rules.yaml`). Spec argument names
+/// `handl-kit-data-prelude/data/lexer_rules.yaml`). Spec argument names
 /// that collide (`data`, `type`, `for`, …) cannot be emitted verbatim in
 /// binder position — the adapter's `(params) ~> do` would not parse.
 /// Suffix `_` keeps the name legible and consistent between the param
