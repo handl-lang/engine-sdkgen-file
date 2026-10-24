@@ -88,7 +88,7 @@ fn emits_port_and_adapter() {
     FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
 
     let port = fs::read_to_string(port_dir.join("clock.hnl")).unwrap();
-    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/clock.hnl")).unwrap();
+    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/clock_c.hnl")).unwrap();
 
     assert!(
         port.contains("export Timespec := {"),
@@ -167,7 +167,7 @@ fn out_buf_descriptor_gets_buf_unwrap_body() {
     let _ = fs::remove_dir_all(&tmp);
     FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
 
-    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/socket.hnl")).unwrap();
+    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/socket_c.hnl")).unwrap();
     assert!(
         adapter.contains("\"out_buf:65536\""),
         "out_buf descriptor missing: {adapter}"

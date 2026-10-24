@@ -54,7 +54,7 @@ fn emits_js_port_and_adapter() {
     FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
 
     let port = fs::read_to_string(port_dir.join("console.hnl")).unwrap();
-    let adapter = fs::read_to_string(tmp.join("console-webidl-browser/console.hnl")).unwrap();
+    let adapter = fs::read_to_string(tmp.join("console-webidl-browser/console_c.hnl")).unwrap();
 
     assert!(
         port.contains("--- source: https://example.test/console.idl"),
@@ -120,9 +120,10 @@ fn emits_js_port_and_adapter() {
     let _ = fs::remove_dir_all(&tmp);
 }
 
-/// `per_record_files` emits one `<Record>.hnl` port/adapter pair per
-/// record plus `types.hnl` for typedefs and loose functions — the
-/// single-file `<module>.hnl` is not written.
+/// `per_record_files` emits one `<Record>.hnl` port / `<Record>_c.hnl`
+/// adapter pair per record plus `types.hnl`/`types_c.hnl` for typedefs
+/// and loose functions — the single-file `<module>.hnl` port and
+/// `<module>_c.hnl` adapter are not written.
 #[test]
 fn emits_per_record_layout() {
     let mut module = build_console_module();
@@ -166,11 +167,14 @@ fn emits_per_record_layout() {
 
     let widget_port = fs::read_to_string(port_dir.join("Widget.hnl")).unwrap();
     let types_port = fs::read_to_string(port_dir.join("types.hnl")).unwrap();
-    let widget_adapter = fs::read_to_string(adapter_dir.join("Widget.hnl")).unwrap();
-    let types_adapter = fs::read_to_string(adapter_dir.join("types.hnl")).unwrap();
+    let widget_adapter = fs::read_to_string(adapter_dir.join("Widget_c.hnl")).unwrap();
+    let types_adapter = fs::read_to_string(adapter_dir.join("types_c.hnl")).unwrap();
 
     assert!(!port_dir.join("console.hnl").exists());
+    // Neither the legacy same-named adapter nor the `_c` single-file
+    // artifact may linger after a per-record emission.
     assert!(!adapter_dir.join("console.hnl").exists());
+    assert!(!adapter_dir.join("console_c.hnl").exists());
 
     assert!(widget_port.contains("export Widget :="), "{widget_port}");
     assert!(widget_port.contains("export WidgetFind:"), "{widget_port}");

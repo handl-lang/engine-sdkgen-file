@@ -61,8 +61,13 @@ impl Emitter for FileEmitter {
             build_adapter(module, &lib, module_name, &adapter_pkg),
         );
 
+        // The adapter file carries a `_c` suffix (`uchar_c.hnl` next to
+        // the port's `uchar.hnl`): both basenames resolve through the
+        // module table, and a same-named adapter would self-import via
+        // its own `from "../<lib>/<name>"` line (the `uchar` collision —
+        // the port keeps the bare name, the adapter the impl suffix).
         let port_path = output.join(format!("{module_name}.hnl"));
-        let adapter_path = adapter_dir.join(format!("{module_name}.hnl"));
+        let adapter_path = adapter_dir.join(format!("{module_name}_c.hnl"));
 
         std::fs::write(&port_path, port)
             .map_err(|e| SdkgenError(format!("failed to write {port_path:?}: {e}")))?;
@@ -73,10 +78,11 @@ impl Emitter for FileEmitter {
     }
 }
 
-/// Per-record layout: one `<Record>.hnl` port/adapter pair per record
-/// plus `types.hnl` for typedefs, enum constants, and functions not
-/// owned by a record (namespace members, callbacks). The single-file
-/// layout's `<module>.hnl` artifacts are removed so a regenerated spec
+/// Per-record layout: one `<Record>.hnl` port / `<Record>_c.hnl` adapter
+/// pair per record plus `types.hnl`/`types_c.hnl` for typedefs, enum
+/// constants, and functions not owned by a record (namespace members,
+/// callbacks). The single-file layout's `<module>.hnl` (legacy) and
+/// `<module>_c.hnl` adapter artifacts are removed so a regenerated spec
 /// doesn't leave a stale, oversized file behind.
 fn emit_per_record(
     lang: &Language,
@@ -87,9 +93,13 @@ fn emit_per_record(
     adapter_pkg: &str,
 ) -> Result<(), SdkgenError> {
     let stale_port = output.join(format!("{}.hnl", module.module));
-    let stale_adapter = adapter_dir.join(format!("{}.hnl", module.module));
+    let stale_adapter = adapter_dir.join(format!("{}_c.hnl", module.module));
+    // Legacy pre-`_c` adapter artifact — removed too so an older
+    // emission doesn't linger under the colliding bare name.
+    let stale_adapter_legacy = adapter_dir.join(format!("{}.hnl", module.module));
     let _ = std::fs::remove_file(stale_port);
     let _ = std::fs::remove_file(stale_adapter);
+    let _ = std::fs::remove_file(stale_adapter_legacy);
 
     let record_names: std::collections::HashSet<&str> =
         module.records.iter().map(|r| r.name.as_str()).collect();
@@ -114,8 +124,8 @@ fn emit_per_record(
         let adapter = canonicalize(lang, build_adapter(sub, lib, name, adapter_pkg));
         std::fs::write(output.join(format!("{name}.hnl")), port)
             .map_err(|e| SdkgenError(format!("failed to write {name}.hnl: {e}")))?;
-        std::fs::write(adapter_dir.join(format!("{name}.hnl")), adapter)
-            .map_err(|e| SdkgenError(format!("failed to write adapter {name}.hnl: {e}")))?;
+        std::fs::write(adapter_dir.join(format!("{name}_c.hnl")), adapter)
+            .map_err(|e| SdkgenError(format!("failed to write adapter {name}_c.hnl: {e}")))?;
         Ok(())
     };
 
@@ -454,7 +464,9 @@ fn field_port(spec: &str) -> String {
 fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str) -> String {
     let client = client_info(&module.client_package);
     let mut out = String::new();
-    out.push_str(&format!("--- Generated adapter for {adapter_pkg}/{name}\n"));
+    out.push_str(&format!(
+        "--- Generated adapter for {adapter_pkg}/{name}_c\n"
+    ));
     if let Some(source) = &module.source {
         out.push_str(&format!("--- source: {source}\n"));
     }

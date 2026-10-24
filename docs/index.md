@@ -17,20 +17,26 @@ raw text is still written — an unformatted artifact beats none.
 ## Output layout
 
 ```text
-<output>/<module>.hnl                              — port
-<output>/../<lib>-<backend_id>-<slug>/<module>.hnl — adapter
+<output>/<module>.hnl                                — port
+<output>/../<lib>-<backend_id>-<slug>/<module>_c.hnl — adapter
 ```
 
 `<lib>` = basename of `--output`; `<slug>` = `target_slug(
 module.target)` (`x86_64-unknown-linux-gnu` → `linux-x86_64`; `browser`,
 `host` pass through).
 
+The adapter's `_c` suffix keeps the two basenames distinct in the
+module table: the adapter file's own `from "../<lib>/<module>" import`
+line resolves the *port* spec (`<output>/<module>.hnl`) instead of
+basename-colliding back onto itself (the `uchar` self-import class).
+
 When `module.per_record_files` is set (the `webidl` backend sets it —
 its records never name each other), the layout splits: one
-`<Record>.hnl` port/adapter pair per record, plus `types.hnl` for
-typedefs, enum constants, and functions not owned by a record
-(ownership is `c_decl`'s prefix before `.` — `Request.arrayBuffer`
-belongs to `Request`). Stale single-file `<module>.hnl` artifacts are
+`<Record>.hnl` port / `<Record>_c.hnl` adapter pair per record, plus
+`types.hnl`/`types_c.hnl` for typedefs, enum constants, and functions
+not owned by a record (ownership is `c_decl`'s prefix before `.` —
+`Request.arrayBuffer` belongs to `Request`). Stale single-file
+`<module>.hnl` (legacy) and `<module>_c.hnl` adapter artifacts are
 removed on regen. Small files stay under typechecker node budgets.
 
 ## Port emission (`build_port`)
