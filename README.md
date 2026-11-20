@@ -1,9 +1,19 @@
 # sdkgen-file
 
-`handl-plugin-sdkgen-emitter-file` — the `hnl-file` emitter for the Handl SDK generator (ADR-0107): writes `SdkgenModule` IR as `.hnl` port/adapter package pairs. Serves the `c` and `webidl` targets, resolved by name through the `SdkgenRegistry`.
+`handl-plugin-sdkgen-emitter-file` — the `hnl-file` emitter for the Handl
+SDK generator: writes `SdkgenModule` IR as `.hnl` port/adapter package
+pairs. Part of the `sdkgen-*` family. Serves the `c` and `webidl`
+targets, resolved by name through the `SdkgenRegistry`.
 
-Sibling-repo deps are git dependencies (`branch = "main"`); `[patch]` tables
-resolve them from sibling checkouts.
+## Development
+
+```bash
+cargo xtask gate        # fmt --check → clippy -D warnings → test → doc
+```
+
+`cargo xtask` wraps the repo's `xtask/` crate; `ci.sh` is the gate entry.
+Deps resolve from git, so no sibling checkouts are needed; a plain clone
+test-runs as-is.
 
 ## Docs
 
@@ -11,3 +21,7 @@ resolve them from sibling checkouts.
   layout, port/adapter emission rules, per-client call shapes,
   descriptor → port-arg contract.
 - Framework: [`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
+
+## License
+
+MIT.
