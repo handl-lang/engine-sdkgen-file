@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ci.sh — sdkgen-file CI pipeline for the bupha shell runner.
+# ci.sh — tool-sdkgen-file CI pipeline for the bupha shell runner.
 #
 # Same layout model as kernel/scripts/ci.sh: bupha invokes this via
 # `runner.kind = "script"` → `bash ci.sh` inside a detached worktree of
@@ -15,7 +15,7 @@
 #                    memory-bound; do NOT raise)
 #   CI_BUILD_JOBS    cargo build -j (default 2)
 #   CI_TARGET_DIR    shared cargo target dir
-#                    (default <workspace>/.ci-target/sdkgen-file)
+#                    (default <workspace>/.ci-target/tool-sdkgen-file)
 #   HANDL_TOKEN / BUPHA_TOKEN  GitHub token for private git deps. Optional
 #                    locally: every handl-lang dep is [patch]'d to a
 #                    sibling checkout, so cargo never hits github for them.
@@ -38,8 +38,8 @@ export RUST_TEST_THREADS="$JOBS"
 # ---------------------------------------------------------------------------
 # Layout plumbing — the committed [patch] tables are relative paths
 # (../engine-*, ../host, ../kernel, ../kit-*), and sibling manifests reach
-# this repo transitively as ../sdkgen-file. In a detached worktree recreate the
-# sibling layout in the worktree's parent: ../sdkgen-file -> this worktree (the
+# this repo transitively as ../tool-sdkgen-file. In a detached worktree recreate the
+# sibling layout in the worktree's parent: ../tool-sdkgen-file -> this worktree (the
 # sha under test), every other sibling -> the real checkout under
 # ~/GitHub/handl-lang. A stale/absent sibling breaks dep resolution before
 # a single crate compiles.
@@ -57,29 +57,29 @@ IN_WORKTREE=0
 # every sha. Runs are serialized by the watcher (single worker,
 # latest-wins), so sharing is safe. Prune with `cargo clean` under
 # CI_TARGET_DIR if disk gets tight.
-export CARGO_TARGET_DIR="${CI_TARGET_DIR:-$WORKSPACE_ROOT/.ci-target/sdkgen-file}"
+export CARGO_TARGET_DIR="${CI_TARGET_DIR:-$WORKSPACE_ROOT/.ci-target/tool-sdkgen-file}"
 
 ensure_siblings() {
   [ "$IN_WORKTREE" = 1 ] || return 0
   local parent; parent="$(cd .. && pwd)"
   if [ "$parent" = "$WORKSPACE_ROOT" ]; then
-    echo "ci.sh: CI worktree sits inside $WORKSPACE_ROOT — ../sdkgen-file would" >&2
+    echo "ci.sh: CI worktree sits inside $WORKSPACE_ROOT — ../tool-sdkgen-file would" >&2
     echo "       resolve to the dev checkout instead of this sha. Move the" >&2
     echo "       worktree base outside the workspace root." >&2
     return 1
   fi
-  # Self: ../sdkgen-file must name THIS tree — transitive sibling path deps on
-  # sdkgen-file crates must build the pushed sha, not the dev checkout. Only
+  # Self: ../tool-sdkgen-file must name THIS tree — transitive sibling path deps on
+  # tool-sdkgen-file crates must build the pushed sha, not the dev checkout. Only
   # ever (re)point a symlink; refuse to clobber a real directory.
-  if [ -e "$parent/sdkgen-file" ] && [ ! -L "$parent/sdkgen-file" ]; then
-    echo "ci.sh: $parent/sdkgen-file is a real directory — refusing to clobber" >&2
+  if [ -e "$parent/tool-sdkgen-file" ] && [ ! -L "$parent/tool-sdkgen-file" ]; then
+    echo "ci.sh: $parent/tool-sdkgen-file is a real directory — refusing to clobber" >&2
     return 1
   fi
-  ln -sfn "$PWD" "$parent/sdkgen-file"
+  ln -sfn "$PWD" "$parent/tool-sdkgen-file"
   local d name
   for d in "$WORKSPACE_ROOT"/*/; do
     name="$(basename "$d")"
-    [ "$name" = "sdkgen-file" ] && continue
+    [ "$name" = "tool-sdkgen-file" ] && continue
     # refresh symlinks (a previous run's links may be stale or dangling);
     # never clobber a real directory that happens to sit in the parent.
     if [ -L "$parent/$name" ] || [ ! -e "$parent/$name" ]; then
