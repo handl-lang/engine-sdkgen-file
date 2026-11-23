@@ -12,7 +12,7 @@ use std::sync::Arc;
 /// The [`Language`] used to canonicalize emitted source is injected at
 /// construction (ADR-0128 §"The 0.8 seam"): the emitter lives in platform,
 /// so it must not link `handl-kit-data-prelude` itself — the host
-/// (`hnl sdkgen`) assembles the canonical language and hands it in.
+/// (`hnl codegen`) assembles the canonical language and hands it in.
 pub struct FileEmitter {
     lang: Arc<Language>,
 }
