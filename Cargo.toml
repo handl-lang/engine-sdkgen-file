@@ -16,6 +16,12 @@ handl-plugin-ext-fmt = { git = "https://github.com/handl-lang/host", branch = "m
 
 [dev-dependencies]
 handl-kit-data-prelude = { git = "https://github.com/handl-lang/kit-data-prelude", branch = "main" }
+# End-to-end webidl→hnl test (`tests/emit_worker_webidl.rs`): the
+# backend marks js dispatch forms (`recv:`/`handler:`/`constructor`)
+# this emitter consumes. Dev-only path dep — the sibling-checkout
+# convention the [patch] tables already assume; the emitter never
+# depends on a backend at resolution time.
+handl-plugin-sdkgen-backend-webidl = { path = "../engine-sdkgen-webidl" }
 
 [patch."https://github.com/handl-lang/engine"]
 hnl-engine = { path = "../engine" }
@@ -63,4 +69,3 @@ handl-plugin-ext-diag = { path = "../host/crates/plugin-ext-diag" }
 handl-plugin-ext-fmt = { path = "../host/crates/plugin-ext-fmt" }
 handl-plugin-sdkgen = { path = "../host/crates/plugin-sdkgen" }
 handl-runtime = { path = "../host/crates/handl-runtime" }
-

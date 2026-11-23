@@ -181,7 +181,6 @@ fn target_slug(target: &str) -> String {
 struct ClientInfo {
     client_pkg: &'static str,
     error_type: &'static str,
-    error_arrow: &'static str,
 }
 
 fn client_info(client_package: &str) -> ClientInfo {
@@ -189,13 +188,11 @@ fn client_info(client_package: &str) -> ClientInfo {
         ClientInfo {
             client_pkg: "js",
             error_type: "JsError",
-            error_arrow: "error",
         }
     } else {
         ClientInfo {
             client_pkg: "ffi",
             error_type: "Errno",
-            error_arrow: "errno",
         }
     }
 }
@@ -461,6 +458,101 @@ fn field_port(spec: &str) -> String {
     }
 }
 
+/// How a `js`-client function dispatches at runtime. The webidl
+/// backend encodes the dispatch kind in the function's descriptors and
+/// `c_decl`:
+///
+/// - `Interface.constructor` → [`JsDispatch::Construct`] (`js.construct`
+///   — `Reflect.construct` on the global constructor named by the
+///   interface).
+/// - a leading `recv:<desc>` arg descriptor → [`JsDispatch::Invoke`]
+///   (`js.invoke` — the arg is the receiver, peeled out of the marshalled
+///   arg list).
+/// - a `handler:<event>` arg descriptor (always behind `recv:`) →
+///   [`JsDispatch::On`] (`js.on` — registers the arrow as an event
+///   listener; no descriptor list applies).
+/// - anything else → [`JsDispatch::Call`] (`js.call` on the
+///   `Interface.member` owner — the namespace object for namespace ops,
+///   the interface global for `static` ops).
+enum JsDispatch {
+    Call { obj: String, method: String },
+    Invoke { recv: String, method: String },
+    Construct { method: String },
+    On { recv: String, event: String, arrow: String },
+}
+
+/// Classify `f`'s JS dispatch. `library` is the module fallback object
+/// for `c_decl`s that name no owner (callbacks and other loose
+/// functions).
+fn js_dispatch(f: &handl_plugin_sdkgen::Function, library: &str) -> JsDispatch {
+    let (owner, member) = f
+        .c_decl
+        .rsplit_once('.')
+        .map(|(o, m)| (Some(o), m))
+        .unwrap_or((None, f.name.as_str()));
+    let recv_marked = f
+        .arg_descriptors
+        .first()
+        .is_some_and(|d| d.starts_with("recv:"));
+
+    if let Some(pos) = f
+        .arg_descriptors
+        .iter()
+        .position(|d| d.starts_with("handler:"))
+        && recv_marked
+        && pos > 0
+        && pos < f.port_args.len()
+    {
+        return JsDispatch::On {
+            recv: safe_ident(&f.port_args[0].name),
+            event: f.arg_descriptors[pos]["handler:".len()..].to_string(),
+            arrow: safe_ident(&f.port_args[pos].name),
+        };
+    }
+
+    if member == "constructor"
+        && let Some(intf) = owner
+    {
+        return JsDispatch::Construct {
+            method: intf.to_string(),
+        };
+    }
+
+    if recv_marked && owner.is_some() {
+        return JsDispatch::Invoke {
+            recv: safe_ident(&f.port_args[0].name),
+            method: member.to_string(),
+        };
+    }
+
+    JsDispatch::Call {
+        obj: owner.unwrap_or(library).to_string(),
+        method: member.to_string(),
+    }
+}
+
+/// The `js` ops a module's functions actually dispatch through — the
+/// adapter's `from "js" import { … }` list, `error` always included.
+fn js_ops_used(module: &SdkgenModule) -> Vec<&'static str> {
+    let mut used = [false; 4]; // call, invoke, construct, on
+    for f in &module.functions {
+        match js_dispatch(f, &module.library) {
+            JsDispatch::Call { .. } => used[0] = true,
+            JsDispatch::Invoke { .. } => used[1] = true,
+            JsDispatch::Construct { .. } => used[2] = true,
+            JsDispatch::On { .. } => used[3] = true,
+        }
+    }
+    const NAMES: [&str; 4] = ["call", "invoke", "construct", "on"];
+    let mut ops: Vec<&'static str> = NAMES
+        .iter()
+        .zip(used)
+        .filter_map(|(n, u)| u.then_some(*n))
+        .collect();
+    ops.push("error");
+    ops
+}
+
 fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str) -> String {
     let client = client_info(&module.client_package);
     let mut out = String::new();
@@ -474,11 +566,12 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
     // `ffi.call`/`ffi.errno` resolve through the host module chain, not the
     // package table — `from "ffi" import { call }` would bind the *type
     // signature* `ffi.hnl` exports, which is not an arrow. The js client
-    // keeps the named import (its package exports callable arrows).
-    if client.client_pkg != "ffi" {
+    // keeps the named import (its package exports callable arrows); only
+    // the ops the module's dispatch forms need are imported.
+    if client.client_pkg == "js" {
         out.push_str(&format!(
-            "from \"{}\" import {{ call, {} }}\n",
-            client.client_pkg, client.error_arrow
+            "from \"js\" import {{ {} }}\n",
+            js_ops_used(module).join(", ")
         ));
     }
     out.push_str("from \"result\" import { ok, err }\n");
@@ -507,11 +600,6 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
         out.push('\n');
     }
 
-    let ffi_prefix = if client.client_pkg == "ffi" {
-        "ffi."
-    } else {
-        ""
-    };
     for f in &module.functions {
         let arg_names = f
             .port_args
@@ -540,15 +628,6 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
             f.ret_descriptor.clone()
         };
 
-        let (call_lib, call_sym) = if client.client_pkg == "js" {
-            let method = f.c_decl.rsplit_once('.').map(|(_, m)| m).unwrap_or(&f.name);
-            (module.library.clone(), method.to_string())
-        } else if module.library.is_empty() {
-            (format!("{lib}.so.6"), f.name.clone())
-        } else {
-            (module.library.clone(), f.name.clone())
-        };
-
         // The grade lives on the port annotation (`f.port_name` carries
         // `~[1]~>`); the body must be a plain `~>` arrow. `~[N]~>` in
         // expression position builds a `dim_arrow` type record and
@@ -558,53 +637,109 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
             "export {}: {} := ({}) ~> do {{\n",
             f.name, f.port_name, arg_names
         ));
-        out.push_str(&format!(
-            "  r = {ffi_prefix}call(\"{call_lib}\", \"{call_sym}\", [{arg_names}], [{descs}], \"{ret_descriptor}\", false)\n"
-        ));
 
         if client.client_pkg == "js" {
-            out.push_str("  e = error()\n");
-            out.push_str("  if e == null {\n");
-            out.push_str("    ok(r)\n");
-            out.push_str("  } else {\n");
-            out.push_str("    err(e)\n");
-            out.push_str("  }\n");
-        } else if result_record_fields(f).is_some() {
-            if f.errno_guard {
-                out.push_str("  if r.ret < 0 {\n");
-                out.push_str("    err(ffi.errno())\n");
+            // Descriptor/arg slices per dispatch form: `invoke` peels the
+            // leading `self` receiver out of the marshalled lists; `on`
+            // takes no descriptor list at all.
+            let skip = match js_dispatch(f, &module.library) {
+                JsDispatch::Invoke { .. } => 1,
+                _ => 0,
+            };
+            let call_args: Vec<String> = f
+                .port_args
+                .iter()
+                .skip(skip)
+                .map(|a| safe_ident(&a.name))
+                .collect();
+            let call_descs: Vec<String> = f
+                .arg_descriptors
+                .iter()
+                .skip(skip)
+                .map(|d| format!("\"{}\"", js_descriptor(d)))
+                .collect();
+            let call_args = call_args.join(", ");
+            let call_descs = call_descs.join(", ");
+            match js_dispatch(f, &module.library) {
+                JsDispatch::Call { obj, method } => out.push_str(&format!(
+                    "  r = call(\"{obj}\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                )),
+                JsDispatch::Invoke { recv, method } => out.push_str(&format!(
+                    "  r = invoke({recv}, \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                )),
+                JsDispatch::Construct { method } => out.push_str(&format!(
+                    "  r = construct(\"\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                )),
+                JsDispatch::On { recv, event, arrow } => out.push_str(&format!(
+                    "  r = on({recv}, \"{event}\", {arrow})\n"
+                )),
+            }
+            if matches!(js_dispatch(f, &module.library), JsDispatch::On { .. }) {
+                // `js.on` returns the listener or null on failure and does
+                // not clear `error()` on success — only a null result with
+                // a recorded exception is a failure.
+                out.push_str("  e = error()\n");
+                out.push_str("  if r == null && e != null {\n");
+                out.push_str("    err(e)\n");
                 out.push_str("  } else {\n");
                 out.push_str("    ok(r)\n");
                 out.push_str("  }\n");
             } else {
-                out.push_str("  ok(r)\n");
-            }
-        } else if f.arg_descriptors.iter().any(|d| d.starts_with("out_buf:")) {
-            // A lone out_buf: `ret` doubles as the byte count — unwrap
-            // to the buffer.
-            if f.errno_guard {
-                out.push_str("  if r.ret < 0 {\n");
-                out.push_str("    err(ffi.errno())\n");
-                out.push_str("  } else {\n");
-                out.push_str("    ok(r.buf)\n");
-                out.push_str("  }\n");
-            } else {
-                out.push_str("  ok(r.buf)\n");
-            }
-        } else if f.ret_descriptor == "void" {
-            out.push_str("  ok(null)\n");
-        } else if is_numeric_descriptor(&f.ret_descriptor) {
-            if f.errno_guard {
-                out.push_str("  if r < 0 {\n");
-                out.push_str("    err(ffi.errno())\n");
-                out.push_str("  } else {\n");
+                out.push_str("  e = error()\n");
+                out.push_str("  if e == null {\n");
                 out.push_str("    ok(r)\n");
+                out.push_str("  } else {\n");
+                out.push_str("    err(e)\n");
                 out.push_str("  }\n");
-            } else {
-                out.push_str("  ok(r)\n");
             }
         } else {
-            out.push_str("  ok(r)\n");
+            out.push_str(&format!(
+                "  r = ffi.call(\"{}\", \"{}\", [{arg_names}], [{descs}], \"{}\", false)\n",
+                if module.library.is_empty() {
+                    format!("{lib}.so.6")
+                } else {
+                    module.library.clone()
+                },
+                f.name,
+                ret_descriptor
+            ));
+            if result_record_fields(f).is_some() {
+                if f.errno_guard {
+                    out.push_str("  if r.ret < 0 {\n");
+                    out.push_str("    err(ffi.errno())\n");
+                    out.push_str("  } else {\n");
+                    out.push_str("    ok(r)\n");
+                    out.push_str("  }\n");
+                } else {
+                    out.push_str("  ok(r)\n");
+                }
+            } else if f.arg_descriptors.iter().any(|d| d.starts_with("out_buf:")) {
+                // A lone out_buf: `ret` doubles as the byte count — unwrap
+                // to the buffer.
+                if f.errno_guard {
+                    out.push_str("  if r.ret < 0 {\n");
+                    out.push_str("    err(ffi.errno())\n");
+                    out.push_str("  } else {\n");
+                    out.push_str("    ok(r.buf)\n");
+                    out.push_str("  }\n");
+                } else {
+                    out.push_str("  ok(r.buf)\n");
+                }
+            } else if f.ret_descriptor == "void" {
+                out.push_str("  ok(null)\n");
+            } else if is_numeric_descriptor(&f.ret_descriptor) {
+                if f.errno_guard {
+                    out.push_str("  if r < 0 {\n");
+                    out.push_str("    err(ffi.errno())\n");
+                    out.push_str("  } else {\n");
+                    out.push_str("    ok(r)\n");
+                    out.push_str("  }\n");
+                } else {
+                    out.push_str("  ok(r)\n");
+                }
+            } else {
+                out.push_str("  ok(r)\n");
+            }
         }
 
         out.push_str("}\n\n");

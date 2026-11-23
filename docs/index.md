@@ -67,12 +67,30 @@ Per client (`module.client_package`):
   `module.library`, defaulting to `<lib>.so.6` when empty. Enum
   constants emit `export NAME: Int := <value>` — target-specific data
   bound here, not in the port.
-- **`js`** — `from "js" import { call, error }`; `call(module.library,
-  method, …)` where `method` is `c_decl`'s suffix after `.`;
-  descriptors pass through `js_descriptor` (`void`→`js_void`,
-  `bool`→`js_boolean`, numerics→`js_number`, `promise*`→`js_promise`,
-  `js_*` spellings untouched). Result: `ok(r)` unless `error()` is
-  non-null.
+- **`js`** — `from "js" import { … }` listing only the ops the
+  module's functions dispatch through (`call`, `invoke`, `construct`,
+  `on` — plus `error` always). Dispatch is classified per function
+  (`js_dispatch`) from backend-encoded markers, never from backend
+  vocabulary:
+  - `c_decl` ending in `.constructor` → `construct("", "<Interface>",
+    …)` (`Reflect.construct` on the global).
+  - leading `recv:<desc>` arg descriptor → `invoke(<recv>, "<member>",
+    …)` — the receiver is peeled out of the marshalled arg/descriptor
+    lists.
+  - `handler:<event>` arg descriptor (behind `recv:`) →
+    `on(<recv>, "<event>", <handler>)` — listener registration; its
+    failure convention differs (`js.on` returns the listener or null
+    and does not clear `error()` on success), so the adapter checks
+    `r == null && e != null`.
+  - anything else → `call("<owner>", "<member>", …)` where `<owner>`
+    is `c_decl`'s prefix (namespace object, interface global for
+    `static` ops) or `module.library` for owner-less functions.
+  `method` is `c_decl`'s suffix after `.`; descriptors pass through
+  `js_descriptor` (`void`→`js_void`, `bool`→`js_boolean`,
+  numerics→`js_number`, `promise*`→`js_promise`, `js_*` spellings
+  untouched; `recv:`/`handler:` markers never reach it — `recv:` args
+  are skipped positionally). Result: `ok(r)` unless `error()` is
+  non-null (`on` uses the null-result convention above).
 
 Return unwrapping for `ffi` (skipped for `js`):
 
