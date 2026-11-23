@@ -1,24 +1,42 @@
 use std::fs;
 use std::path::PathBuf;
 
-use handl_plugin_sdkgen::*;
-use handl_plugin_sdkgen_emitter_file::FileEmitter;
+use handl_plugin_codegen::*;
+use handl_plugin_codegen_emitter_file::FileEmitter;
 
 /// The canonical language, assembled from the dev-dep data crate.
 fn lang() -> std::sync::Arc<handl_language::Language> {
     std::sync::Arc::new(
-        handl_kit_data_prelude::language_from_yaml()
-            .expect("canonical language assembles"),
+        handl_kit_data_prelude::language_from_yaml().expect("canonical language assembles"),
     )
 }
 
+/// `materialize` the module into `out` through the kernel lifecycle
+/// (`FsStore` + `Engine::apply`) and return the `Change` set — the
+/// same path `CodegenRegistry::run` drives (PL-004).
+fn emit(module: &SdkgenModule, out: &std::path::Path) -> Vec<Change> {
+    let emitter = FileEmitter::new(lang());
+    let ctx = EmitContext::new().with_output_dir(out);
+    let changes = emitter.materialize(module, &ctx).expect("materialize");
+    let store = FsStore::new(out);
+    let engine = Engine::new(&store);
+    let mut meta = RunMeta::new("test", "0.0.0");
+    meta.new_run_id();
+    engine
+        .apply(&changes, None, &meta, &ApplyOptions::default())
+        .expect("apply");
+    changes
+}
+
 fn build_clock_module() -> SdkgenModule {
-    let mut module = SdkgenModule::default();
-    module.module = "clock".to_string();
-    module.backend_id = "c".to_string();
-    module.target = "x86_64-unknown-linux".to_string();
-    module.client_package = "libc".to_string();
-    module.library = "libc.so.6".to_string();
+    let mut module = SdkgenModule {
+        module: "clock".to_string(),
+        backend_id: "c".to_string(),
+        target: "x86_64-unknown-linux".to_string(),
+        client_package: "libc".to_string(),
+        library: "libc.so.6".to_string(),
+        ..Default::default()
+    };
 
     module.records.push(Record {
         name: "Timespec".to_string(),
@@ -85,10 +103,12 @@ fn emits_port_and_adapter() {
     let port_dir = tmp.join("libc");
 
     let _ = fs::remove_dir_all(&tmp);
-    FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
+    emit(&module, &port_dir);
 
     let port = fs::read_to_string(port_dir.join("clock.hnl")).unwrap();
-    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/clock_c.hnl")).unwrap();
+    // Adapters nest under `<port_pkg>/<adapter_pkg>/` inside the store
+    // root — `ArtifactRef` cannot escape `req.output` (PL-004 T-075).
+    let adapter = fs::read_to_string(port_dir.join("libc-c-linux-x86_64/clock_c.hnl")).unwrap();
 
     assert!(
         port.contains("export Timespec := {"),
@@ -127,12 +147,14 @@ fn emits_port_and_adapter() {
 
 #[test]
 fn out_buf_descriptor_gets_buf_unwrap_body() {
-    let mut module = SdkgenModule::default();
-    module.module = "socket".to_string();
-    module.backend_id = "c".to_string();
-    module.target = "x86_64-unknown-linux".to_string();
-    module.client_package = "libc".to_string();
-    module.library = "libc.so.6".to_string();
+    let mut module = SdkgenModule {
+        module: "socket".to_string(),
+        backend_id: "c".to_string(),
+        target: "x86_64-unknown-linux".to_string(),
+        client_package: "libc".to_string(),
+        library: "libc.so.6".to_string(),
+        ..Default::default()
+    };
 
     module.functions.push(Function {
         name: "recv".to_string(),
@@ -165,9 +187,9 @@ fn out_buf_descriptor_gets_buf_unwrap_body() {
     let port_dir = tmp.join("libc");
 
     let _ = fs::remove_dir_all(&tmp);
-    FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
+    emit(&module, &port_dir);
 
-    let adapter = fs::read_to_string(tmp.join("libc-c-linux-x86_64/socket_c.hnl")).unwrap();
+    let adapter = fs::read_to_string(port_dir.join("libc-c-linux-x86_64/socket_c.hnl")).unwrap();
     assert!(
         adapter.contains("\"out_buf:65536\""),
         "out_buf descriptor missing: {adapter}"

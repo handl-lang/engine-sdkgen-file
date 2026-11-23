@@ -1,17 +1,21 @@
 [package]
-name = "handl-plugin-sdkgen-emitter-file"
+name = "handl-plugin-codegen-emitter-file"
 version = "0.1.0"
 edition = "2024"
-description = "File emitter for the Handl SDK generator (ADR-0107)."
+description = "File emitter for the Handl codegen pipeline (ADR-0107, PL-004)."
 license = "MIT"
-repository = "https://github.com/handl-lang/engine-sdkgen-file"
+repository = "https://github.com/handl-lang/engine-codegen-file"
 readme = "README.md"
-keywords = ["handl", "sdkgen", "codegen"]
+keywords = ["handl", "codegen", "bindings"]
 categories = ["development-tools"]
 
 [dependencies]
 handl-language = { git = "https://github.com/handl-lang/kernel", branch = "main" }
-handl-plugin-sdkgen = { git = "https://github.com/handl-lang/host", branch = "main" }
+# PL-004 T-075: the codegen port lives in `handl-plugin-codegen`
+# (host@7707dbb1+, local-only until pushed); the `[patch]` below
+# resolves it from the sibling `../host` checkout. Kernel traits
+# (`Source`/`Emitter`/`Change`) are re-exported by that crate.
+handl-plugin-codegen = { git = "https://github.com/handl-lang/host", branch = "main" }
 handl-plugin-ext-fmt = { git = "https://github.com/handl-lang/host", branch = "main" }
 
 [dev-dependencies]
@@ -21,7 +25,7 @@ handl-kit-data-prelude = { git = "https://github.com/handl-lang/host", branch = 
 # this emitter consumes. Dev-only path dep — the sibling-checkout
 # convention the [patch] tables already assume; the emitter never
 # depends on a backend at resolution time.
-handl-plugin-sdkgen-backend-webidl = { path = "../engine-sdkgen-webidl" }
+handl-plugin-codegen-backend-webidl = { path = "../engine-codegen-webidl" }
 
 [patch."https://github.com/handl-lang/engine"]
 hnl-engine = { path = "../engine" }
@@ -65,5 +69,5 @@ handl-kit-data-prelude = { path = "../host/crates/handl-kit-data-prelude" }
 handl-platform = { path = "../host/crates/platform" }
 handl-plugin-ext-diag = { path = "../host/crates/plugin-ext-diag" }
 handl-plugin-ext-fmt = { path = "../host/crates/plugin-ext-fmt" }
-handl-plugin-sdkgen = { path = "../host/crates/plugin-sdkgen" }
+handl-plugin-codegen = { path = "../host/crates/plugin-codegen" }
 handl-runtime = { path = "../host/crates/handl-runtime" }

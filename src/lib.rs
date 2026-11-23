@@ -1,13 +1,13 @@
-//! File emitter for the Handl SDK generator (ADR-0107).
+//! File emitter for the Handl codegen pipeline (ADR-0107, PL-004).
 
 use handl_language::Language;
-use handl_plugin_sdkgen::{
-    Emitter, SdkgenEmitterDef, SdkgenError, SdkgenModule, SdkgenRegistry,
+use handl_plugin_codegen::{
+    Change, CodegenEmitterDef, CodegenError, CodegenRegistry, EmitContext, Emitter, SdkgenModule,
+    erase_emitter,
 };
-use std::path::Path;
 use std::sync::Arc;
 
-/// Emitter that writes port and adapter `.hnl` files to disk.
+/// Emitter that renders port and adapter `.hnl` files as `Change`s.
 ///
 /// The [`Language`] used to canonicalize emitted source is injected at
 /// construction (ADR-0128 §"The 0.8 seam"): the emitter lives in platform,
@@ -23,20 +23,35 @@ impl FileEmitter {
     }
 }
 
-/// Register the `hnl-file` emitter on `reg` (ADR-0128 §0.1): the emitter
-/// id the `c`/`webidl` target records reference. The request's `lang` is
-/// cloned per emit — `FileEmitter` owns it behind an `Arc`.
-pub fn register(reg: &mut SdkgenRegistry) {
-    reg.register_emitter(SdkgenEmitterDef {
+/// Register the `hnl-file` emitter on `reg` (ADR-0128 §0.1, PL-004):
+/// the emitter id the `c`/`webidl` target records reference. The
+/// request's `lang` is cloned per emit — `FileEmitter` owns it behind
+/// an `Arc`.
+pub fn register(reg: &mut CodegenRegistry) {
+    reg.register_emitter(CodegenEmitterDef {
         name: "hnl-file",
-        make: |req| Ok(Box::new(FileEmitter::new(Arc::new(req.lang.clone())))),
+        make: |req| Ok(erase_emitter(FileEmitter::new(Arc::new(req.lang.clone())))),
     });
 }
 
-impl Emitter for FileEmitter {
-    fn emit(&self, module: &SdkgenModule, output: &Path) -> Result<(), SdkgenError> {
-        std::fs::create_dir_all(output)
-            .map_err(|e| SdkgenError(format!("failed to create output dir: {e}")))?;
+impl Emitter<SdkgenModule> for FileEmitter {
+    /// Render the desired `.hnl` artifact set — no fs writes (PL-004).
+    /// `req.output_dir` is the port package dir (e.g.
+    /// `handl-packages/generated/libc`); port files land at its root
+    /// (`<module>.hnl`) and adapters under a nested `<adapter_pkg>/`
+    /// subdir. The pre-kernel layout wrote adapters to a *sibling*
+    /// `<port_pkg>-<backend>-<target>/` dir — `ArtifactRef` cannot
+    /// escape the store root, so T-076 must update consumer
+    /// `.handl.toml` dep paths (or revisit the `--output` contract)
+    /// when the sibling layout is restored.
+    fn materialize(
+        &self,
+        module: &SdkgenModule,
+        req: &EmitContext,
+    ) -> Result<Vec<Change>, CodegenError> {
+        let output = req.output_dir.as_deref().ok_or_else(|| {
+            CodegenError::Emit("hnl-file emitter requires EmitContext::output_dir".to_string())
+        })?;
 
         let lib = output
             .file_name()
@@ -47,12 +62,8 @@ impl Emitter for FileEmitter {
         let target_slug = target_slug(&module.target);
         let adapter_pkg = format!("{lib}-{}-{}", module.backend_id, target_slug);
 
-        let adapter_dir = output.parent().unwrap_or(output).join(&adapter_pkg);
-        std::fs::create_dir_all(&adapter_dir)
-            .map_err(|e| SdkgenError(format!("failed to create adapter dir: {e}")))?;
-
         if module.per_record_files {
-            return emit_per_record(&self.lang, module, output, &adapter_dir, &lib, &adapter_pkg);
+            return Ok(emit_per_record(&self.lang, module, &lib, &adapter_pkg));
         }
 
         let port = canonicalize(&self.lang, build_port(module, &lib, module_name));
@@ -64,17 +75,12 @@ impl Emitter for FileEmitter {
         // The adapter file carries a `_c` suffix (`uchar_c.hnl` next to
         // the port's `uchar.hnl`): both basenames resolve through the
         // module table, and a same-named adapter would self-import via
-        // its own `from "../<lib>/<name>"` line (the `uchar` collision —
+        // its own `from "../<name>"` line (the `uchar` collision —
         // the port keeps the bare name, the adapter the impl suffix).
-        let port_path = output.join(format!("{module_name}.hnl"));
-        let adapter_path = adapter_dir.join(format!("{module_name}_c.hnl"));
-
-        std::fs::write(&port_path, port)
-            .map_err(|e| SdkgenError(format!("failed to write {port_path:?}: {e}")))?;
-        std::fs::write(&adapter_path, adapter)
-            .map_err(|e| SdkgenError(format!("failed to write {adapter_path:?}: {e}")))?;
-
-        Ok(())
+        Ok(vec![
+            Change::text(format!("{module_name}.hnl"), port),
+            Change::text(format!("{adapter_pkg}/{module_name}_c.hnl"), adapter),
+        ])
     }
 }
 
@@ -82,24 +88,22 @@ impl Emitter for FileEmitter {
 /// pair per record plus `types.hnl`/`types_c.hnl` for typedefs, enum
 /// constants, and functions not owned by a record (namespace members,
 /// callbacks). The single-file layout's `<module>.hnl` (legacy) and
-/// `<module>_c.hnl` adapter artifacts are removed so a regenerated spec
-/// doesn't leave a stale, oversized file behind.
+/// `<module>_c.hnl` adapter artifacts are declared as `Change::Delete`
+/// so a regenerated spec doesn't leave a stale, oversized file behind.
 fn emit_per_record(
     lang: &Language,
     module: &SdkgenModule,
-    output: &Path,
-    adapter_dir: &Path,
     lib: &str,
     adapter_pkg: &str,
-) -> Result<(), SdkgenError> {
-    let stale_port = output.join(format!("{}.hnl", module.module));
-    let stale_adapter = adapter_dir.join(format!("{}_c.hnl", module.module));
-    // Legacy pre-`_c` adapter artifact — removed too so an older
-    // emission doesn't linger under the colliding bare name.
-    let stale_adapter_legacy = adapter_dir.join(format!("{}.hnl", module.module));
-    let _ = std::fs::remove_file(stale_port);
-    let _ = std::fs::remove_file(stale_adapter);
-    let _ = std::fs::remove_file(stale_adapter_legacy);
+) -> Vec<Change> {
+    let module_name = module.module.as_str();
+    let mut changes = vec![
+        Change::delete(format!("{module_name}.hnl")),
+        Change::delete(format!("{adapter_pkg}/{module_name}_c.hnl")),
+        // Legacy pre-`_c` adapter artifact — removed too so an older
+        // emission doesn't linger under the colliding bare name.
+        Change::delete(format!("{adapter_pkg}/{module_name}.hnl")),
+    ];
 
     let record_names: std::collections::HashSet<&str> =
         module.records.iter().map(|r| r.name.as_str()).collect();
@@ -107,9 +111,9 @@ fn emit_per_record(
     // A function belongs to the interface its `c_decl` names
     // (`Request.arrayBuffer` → `Request`); anything else lands in
     // `types.hnl`.
-    let mut owned: std::collections::HashMap<&str, Vec<handl_plugin_sdkgen::Function>> =
+    let mut owned: std::collections::HashMap<&str, Vec<handl_plugin_codegen::Function>> =
         std::collections::HashMap::new();
-    let mut loose: Vec<handl_plugin_sdkgen::Function> = Vec::new();
+    let mut loose: Vec<handl_plugin_codegen::Function> = Vec::new();
     for f in &module.functions {
         let owner = f.c_decl.split('.').next().unwrap_or("");
         if record_names.contains(owner) {
@@ -119,23 +123,13 @@ fn emit_per_record(
         }
     }
 
-    let write = |sub: &SdkgenModule, name: &str| -> Result<(), SdkgenError> {
-        let port = canonicalize(lang, build_port(sub, lib, name));
-        let adapter = canonicalize(lang, build_adapter(sub, lib, name, adapter_pkg));
-        std::fs::write(output.join(format!("{name}.hnl")), port)
-            .map_err(|e| SdkgenError(format!("failed to write {name}.hnl: {e}")))?;
-        std::fs::write(adapter_dir.join(format!("{name}_c.hnl")), adapter)
-            .map_err(|e| SdkgenError(format!("failed to write adapter {name}_c.hnl: {e}")))?;
-        Ok(())
-    };
-
     for rec in &module.records {
         let mut sub = module.clone();
         sub.records = vec![rec.clone()];
         sub.functions = owned.remove(rec.name.as_str()).unwrap_or_default();
         sub.typedefs = Vec::new();
         sub.enum_constants = Vec::new();
-        write(&sub, &rec.name)?;
+        changes.extend(pair_changes(lang, &sub, lib, &rec.name, adapter_pkg));
     }
 
     let mut types = module.clone();
@@ -143,9 +137,25 @@ fn emit_per_record(
     types.functions = loose;
     if !types.typedefs.is_empty() || !types.enum_constants.is_empty() || !types.functions.is_empty()
     {
-        write(&types, "types")?;
+        changes.extend(pair_changes(lang, &types, lib, "types", adapter_pkg));
     }
-    Ok(())
+    changes
+}
+
+/// The port + adapter `Change` pair for one emitted module slice.
+fn pair_changes(
+    lang: &Language,
+    sub: &SdkgenModule,
+    lib: &str,
+    name: &str,
+    adapter_pkg: &str,
+) -> [Change; 2] {
+    let port = canonicalize(lang, build_port(sub, lib, name));
+    let adapter = canonicalize(lang, build_adapter(sub, lib, name, adapter_pkg));
+    [
+        Change::text(format!("{name}.hnl"), port),
+        Change::text(format!("{adapter_pkg}/{name}_c.hnl"), adapter),
+    ]
 }
 
 /// Run emitted source through the canonical formatter so generated files
@@ -156,7 +166,7 @@ fn canonicalize(lang: &Language, src: String) -> String {
     match handl_plugin_ext_fmt::format_source_with_language(lang, &src) {
         Ok(formatted) => formatted,
         Err(e) => {
-            eprintln!("sdkgen: emitted source failed canonical fmt ({e}); writing unformatted");
+            eprintln!("codegen: emitted source failed canonical fmt ({e}); emitting unformatted");
             src
         }
     }
@@ -208,7 +218,7 @@ fn build_port(module: &SdkgenModule, lib: &str, name: &str) -> String {
     if let Some(source) = &module.source {
         out.push_str(&format!("--- source: {source}\n"));
     }
-    out.push_str("\n");
+    out.push('\n');
     out.push_str(&format!(
         "from \"{}\" import {{ {} }}\n",
         client.client_pkg, client.error_type
@@ -223,7 +233,7 @@ fn build_port(module: &SdkgenModule, lib: &str, name: &str) -> String {
             imp.names.join(", ")
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 
     for rec in &module.records {
         if let Some(d) = &rec.doc {
@@ -299,15 +309,13 @@ fn build_port(module: &SdkgenModule, lib: &str, name: &str) -> String {
             || result_fields
                 .as_ref()
                 .is_some_and(|fs| fs.iter().any(|(n, t)| n == "buf" && *t == msg_name));
-        if uses_msg {
-            if let Some(fields) = msg_record_fields(f) {
-                out.push_str(&format!("export {msg_name} := {{\n"));
-                for (i, (fname, port)) in fields.iter().enumerate() {
-                    let comma = if i == fields.len() - 1 { "" } else { "," };
-                    out.push_str(&format!("  {fname}: {port}{comma}\n"));
-                }
-                out.push_str("}\n\n");
+        if uses_msg && let Some(fields) = msg_record_fields(f) {
+            out.push_str(&format!("export {msg_name} := {{\n"));
+            for (i, (fname, port)) in fields.iter().enumerate() {
+                let comma = if i == fields.len() - 1 { "" } else { "," };
+                out.push_str(&format!("  {fname}: {port}{comma}\n"));
             }
+            out.push_str("}\n\n");
         }
         out.push_str(&format!("--- {}: {}\n", client.client_pkg, f.c_decl));
         out.push_str(&format!(
@@ -332,7 +340,7 @@ fn is_struct_slot(d: &str) -> bool {
 /// `ret` doubles as the byte count). Every other out-shape — struct outs,
 /// scalar value-results, `out_ptr`/`io_buf`, multiple byte slots — keeps
 /// `ret` visible since it carries independent meaning.
-fn result_record_fields(f: &handl_plugin_sdkgen::Function) -> Option<Vec<(String, String)>> {
+fn result_record_fields(f: &handl_plugin_codegen::Function) -> Option<Vec<(String, String)>> {
     let byte_slots = f.arg_descriptors.iter().filter(|d| is_byte_slot(d)).count();
     let struct_out = f.out_struct.is_some() || f.arg_descriptors.iter().any(|d| is_struct_slot(d));
     let scalar_outs = f
@@ -373,7 +381,7 @@ fn result_record_fields(f: &handl_plugin_sdkgen::Function) -> Option<Vec<(String
 /// descriptor into `(name, port-type)` pairs for the port's record decl.
 /// Field specs carry layout suffixes (`name:kind@off[:size]`) and may
 /// nest (`rec:{...}`), so splitting must respect brace depth.
-fn msg_record_fields(f: &handl_plugin_sdkgen::Function) -> Option<Vec<(String, String)>> {
+fn msg_record_fields(f: &handl_plugin_codegen::Function) -> Option<Vec<(String, String)>> {
     let desc = f
         .arg_descriptors
         .iter()
@@ -475,16 +483,28 @@ fn field_port(spec: &str) -> String {
 ///   `Interface.member` owner — the namespace object for namespace ops,
 ///   the interface global for `static` ops).
 enum JsDispatch {
-    Call { obj: String, method: String },
-    Invoke { recv: String, method: String },
-    Construct { method: String },
-    On { recv: String, event: String, arrow: String },
+    Call {
+        obj: String,
+        method: String,
+    },
+    Invoke {
+        recv: String,
+        method: String,
+    },
+    Construct {
+        method: String,
+    },
+    On {
+        recv: String,
+        event: String,
+        arrow: String,
+    },
 }
 
 /// Classify `f`'s JS dispatch. `library` is the module fallback object
 /// for `c_decl`s that name no owner (callbacks and other loose
 /// functions).
-fn js_dispatch(f: &handl_plugin_sdkgen::Function, library: &str) -> JsDispatch {
+fn js_dispatch(f: &handl_plugin_codegen::Function, library: &str) -> JsDispatch {
     let (owner, member) = f
         .c_decl
         .rsplit_once('.')
@@ -562,7 +582,7 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
     if let Some(source) = &module.source {
         out.push_str(&format!("--- source: {source}\n"));
     }
-    out.push_str("\n");
+    out.push('\n');
     // `ffi.call`/`ffi.errno` resolve through the host module chain, not the
     // package table — `from "ffi" import { call }` would bind the *type
     // signature* `ffi.hnl` exports, which is not an arrow. The js client
@@ -584,12 +604,14 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
         imports.push(f.port_name.clone());
     }
     if !imports.is_empty() {
+        // Adapters live one level below the port dir (`<adapter_pkg>/`
+        // inside `req.output_dir`), so the port import is `../{name}`.
         out.push_str(&format!(
-            "from \"../{lib}/{name}\" import {{ {} }}\n",
+            "from \"../{name}\" import {{ {} }}\n",
             imports.join(", ")
         ));
     }
-    out.push_str("\n");
+    out.push('\n');
 
     // Constants are pure values — no ffi.call involved. The port file
     // declares the type; the adapter binds the (target-specific) value.

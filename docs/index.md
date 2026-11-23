@@ -1,15 +1,17 @@
 # The `hnl-file` emitter — `.hnl` port/adapter files
 
-`handl-plugin-sdkgen-emitter-file` is the reference `Emitter`: it writes
-`SdkgenModule` IR to disk as a Handl port/adapter pair. It serves the
+`handl-plugin-codegen-emitter-file` is the reference `Emitter`: it renders
+`SdkgenModule` IR into `Change`s — a Handl port/adapter pair — with no
+fs writes (PL-004). `CodegenRegistry::run` reconciles the set through
+`Engine::apply` over an `FsStore` rooted at `req.output`. It serves the
 `c` and `webidl` targets — they compose it *by name* through the
-`SdkgenRegistry`, never by crate dep. Framework context:
-[`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
+`CodegenRegistry`, never by crate dep. Framework context:
+[`host/crates/plugin-codegen`](https://github.com/handl-lang/host/tree/main/crates/plugin-codegen).
 
 ## Construction
 
 `FileEmitter::new(Arc<Language>)` — the canonical `Language` is injected
-via `SdkgenRequest.lang` (the ADR-0128 "0.8 seam"): emitted source runs
+via `CodegenRequest.lang` (the ADR-0128 "0.8 seam"): emitted source runs
 through `handl_plugin_ext_fmt::format_source_with_language` so output
 satisfies `hnl fmt --check` out of the box. On a formatter error the
 raw text is still written — an unformatted artifact beats none.
@@ -18,15 +20,19 @@ raw text is still written — an unformatted artifact beats none.
 
 ```text
 <output>/<module>.hnl                                — port
-<output>/../<lib>-<backend_id>-<slug>/<module>_c.hnl — adapter
+<output>/<lib>-<backend_id>-<slug>/<module>_c.hnl   — adapter
 ```
+
+Adapters nest *inside* the store root (PL-004: `ArtifactRef` cannot
+escape `req.output`) — the pre-kernel layout wrote them to a sibling
+`<output>/../<adapter_pkg>/` dir.
 
 `<lib>` = basename of `--output`; `<slug>` = `target_slug(
 module.target)` (`x86_64-unknown-linux-gnu` → `linux-x86_64`; `browser`,
 `host` pass through).
 
 The adapter's `_c` suffix keeps the two basenames distinct in the
-module table: the adapter file's own `from "../<lib>/<module>" import`
+module table: the adapter file's own `from "../<module>" import`
 line resolves the *port* spec (`<output>/<module>.hnl`) instead of
 basename-colliding back onto itself (the `uchar` self-import class).
 
@@ -119,5 +125,5 @@ Emitters consume `arg_descriptors` positionally (one per foreign arg);
 `port_args` lists only the consuming ones. The no-consume set:
 `out_buf:*`, `out_ptr:*`, `io_buf:*`, `out_struct:*`, `io_struct:*`,
 `void` (`io_scalar:*` consumes — the caller seeds the cell). See
-[host/docs/sdkgen/conventions.md](https://github.com/handl-lang/host/blob/main/docs/sdkgen/conventions.md)
+[host/crates/plugin-codegen](https://github.com/handl-lang/host/tree/main/crates/plugin-codegen)
 for the cross-backend vocabulary table.

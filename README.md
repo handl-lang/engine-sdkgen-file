@@ -1,9 +1,10 @@
-# engine-sdkgen-file
+# engine-codegen-file
 
-`handl-plugin-sdkgen-emitter-file` — the `hnl-file` emitter for the Handl
-SDK generator: writes `SdkgenModule` IR as `.hnl` port/adapter package
-pairs. Part of the `engine-sdkgen-*` family. Serves the `c` and `webidl`
-targets, resolved by name through the `SdkgenRegistry`.
+`handl-plugin-codegen-emitter-file` — the `hnl-file` emitter for the
+Handl codegen pipeline: renders `SdkgenModule` IR as `.hnl`
+port/adapter package pairs. Part of the `engine-codegen-*` family
+(PL-004 T-075). Serves the `c` and `webidl` targets, resolved by name
+through the `CodegenRegistry`.
 
 ## Development
 
@@ -20,7 +21,7 @@ test-runs as-is.
 - [docs/index.md](docs/index.md) — the `hnl-file` emitter: output
   layout, port/adapter emission rules, per-client call shapes,
   descriptor → port-arg contract.
-- Framework: [`host/docs/sdkgen/`](https://github.com/handl-lang/host/blob/main/docs/sdkgen/index.md).
+- Framework: [`host/crates/plugin-codegen`](https://github.com/handl-lang/host/tree/main/crates/plugin-codegen).
 
 ## License
 

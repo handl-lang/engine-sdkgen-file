@@ -8,15 +8,14 @@
 use std::fs;
 use std::path::PathBuf;
 
-use handl_plugin_sdkgen::{Emitter, SdkgenBackend};
-use handl_plugin_sdkgen_backend_webidl::WebIdlBackend;
-use handl_plugin_sdkgen_emitter_file::FileEmitter;
+use handl_plugin_codegen::{ApplyOptions, EmitContext, Emitter, Engine, FsStore, RunMeta};
+use handl_plugin_codegen_backend_webidl::WebIdlBackend;
+use handl_plugin_codegen_emitter_file::FileEmitter;
 
 /// The canonical language, assembled from the dev-dep data crate.
 fn lang() -> std::sync::Arc<handl_language::Language> {
     std::sync::Arc::new(
-        handl_kit_data_prelude::language_from_yaml()
-            .expect("canonical language assembles"),
+        handl_kit_data_prelude::language_from_yaml().expect("canonical language assembles"),
     )
 }
 
@@ -87,9 +86,22 @@ fn emits_worker_dispatch_forms() {
     assert!(module.diagnostics.is_empty(), "{:?}", module.diagnostics);
 
     let port_dir = tmp.join("worker");
-    FileEmitter::new(lang()).emit(&module, &port_dir).unwrap();
+    // `materialize` → `FsStore` + `Engine::apply` — the kernel path
+    // `CodegenRegistry::run` drives (PL-004 T-075).
+    let emitter = FileEmitter::new(lang());
+    let ctx = EmitContext::new().with_output_dir(&port_dir);
+    let changes = emitter.materialize(&module, &ctx).expect("materialize");
+    let store = FsStore::new(&port_dir);
+    let engine = Engine::new(&store);
+    let mut meta = RunMeta::new("test", "0.0.0");
+    meta.new_run_id();
+    engine
+        .apply(&changes, None, &meta, &ApplyOptions::default())
+        .expect("apply");
 
-    let adapter_dir = tmp.join("worker-webidl-browser");
+    // Adapters nest under `<port_pkg>/<adapter_pkg>/` inside the store
+    // root — `ArtifactRef` cannot escape `req.output`.
+    let adapter_dir = port_dir.join("worker-webidl-browser");
     let worker_port = fs::read_to_string(port_dir.join("Worker.hnl")).unwrap();
     let worker_adapter = fs::read_to_string(adapter_dir.join("Worker_c.hnl")).unwrap();
 
@@ -153,7 +165,8 @@ fn emits_worker_dispatch_forms() {
         "port onmessage signature missing:\n{worker_port}"
     );
     assert!(
-        worker_port.contains("export WorkerConstructor: (Handle, Handle) ~[1]~> Result<Handle, JsError>"),
+        worker_port
+            .contains("export WorkerConstructor: (Handle, Handle) ~[1]~> Result<Handle, JsError>"),
         "port constructor must return the instance:\n{worker_port}"
     );
 
@@ -173,10 +186,7 @@ fn emits_worker_dispatch_forms() {
     }
 
     // Emitted files are canonical: `hnl fmt --check` must pass.
-    for f in [
-        worker_port.as_str(),
-        worker_adapter.as_str(),
-    ] {
+    for f in [worker_port.as_str(), worker_adapter.as_str()] {
         assert!(
             handl_plugin_ext_fmt::check_source_with_language(&lang(), f).unwrap_or(false),
             "emitted source is not canonical:\n{f}"
