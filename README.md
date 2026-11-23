@@ -1,8 +1,8 @@
-# tool-sdkgen-file
+# engine-sdkgen-file
 
 `handl-plugin-sdkgen-emitter-file` — the `hnl-file` emitter for the Handl
 SDK generator: writes `SdkgenModule` IR as `.hnl` port/adapter package
-pairs. Part of the `tool-sdkgen-*` family. Serves the `c` and `webidl`
+pairs. Part of the `engine-sdkgen-*` family. Serves the `c` and `webidl`
 targets, resolved by name through the `SdkgenRegistry`.
 
 ## Development
