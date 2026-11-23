@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "File emitter for the Handl codegen pipeline (ADR-0107, PL-004)."
 license = "MIT"
-repository = "https://github.com/handl-lang/engine-codegen-file"
+repository = "https://github.com/handl-lang/tool-codegen-file"
 readme = "README.md"
 keywords = ["handl", "codegen", "bindings"]
 categories = ["development-tools"]
@@ -25,37 +25,37 @@ handl-kit-data-prelude = { git = "https://github.com/handl-lang/host", branch = 
 # this emitter consumes. Dev-only path dep — the sibling-checkout
 # convention the [patch] tables already assume; the emitter never
 # depends on a backend at resolution time.
-handl-plugin-codegen-backend-webidl = { path = "../engine-codegen-webidl" }
+handl-plugin-codegen-backend-webidl = { path = "../tool-codegen-webidl" }
 
 [patch."https://github.com/handl-lang/engine"]
 hnl-engine = { path = "../engine" }
 
-[patch."https://github.com/handl-lang/engine-exec"]
-hnl-engine-exec = { path = "../engine-exec" }
+[patch."https://github.com/handl-lang/exec"]
+hnl-exec = { path = "../exec" }
 
-[patch."https://github.com/handl-lang/engine-fmt"]
-hnl-engine-fmt = { path = "../engine-fmt" }
+[patch."https://github.com/handl-lang/tool-fmt"]
+hnl-tool-fmt = { path = "../tool-fmt" }
 
-[patch."https://github.com/handl-lang/engine-lex"]
-hnl-engine-lex = { path = "../engine-lex" }
+[patch."https://github.com/handl-lang/tool-lex"]
+hnl-tool-lex = { path = "../tool-lex" }
 
-[patch."https://github.com/handl-lang/engine-lex-pattern"]
-hnl-engine-lex-pattern = { path = "../engine-lex-pattern" }
+[patch."https://github.com/handl-lang/tool-lex-pattern"]
+hnl-tool-lex-pattern = { path = "../tool-lex-pattern" }
 
-[patch."https://github.com/handl-lang/engine-parse"]
-hnl-engine-parse = { path = "../engine-parse" }
+[patch."https://github.com/handl-lang/tool-parse"]
+hnl-tool-parse = { path = "../tool-parse" }
 
-[patch."https://github.com/handl-lang/engine-parse-pratt"]
-hnl-engine-parse-pratt = { path = "../engine-parse-pratt" }
+[patch."https://github.com/handl-lang/tool-parse-pratt"]
+hnl-tool-parse-pratt = { path = "../tool-parse-pratt" }
 
-[patch."https://github.com/handl-lang/engine-transform"]
-hnl-engine-transform = { path = "../engine-transform" }
+[patch."https://github.com/handl-lang/tool-transform"]
+hnl-tool-transform = { path = "../tool-transform" }
 
-[patch."https://github.com/handl-lang/engine-transform-rewrite"]
-hnl-engine-transform-rewrite = { path = "../engine-transform-rewrite" }
+[patch."https://github.com/handl-lang/tool-transform-rewrite"]
+hnl-tool-transform-rewrite = { path = "../tool-transform-rewrite" }
 
-[patch."https://github.com/handl-lang/engine-typecheck"]
-hnl-engine-typecheck = { path = "../engine-typecheck" }
+[patch."https://github.com/handl-lang/tool-typecheck"]
+hnl-tool-typecheck = { path = "../tool-typecheck" }
 
 [patch."https://github.com/handl-lang/kernel"]
 handl-calculus = { path = "../kernel/crates/handl-calculus" }

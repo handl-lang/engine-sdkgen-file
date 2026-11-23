@@ -1,8 +1,8 @@
-# engine-codegen-file
+# tool-codegen-file
 
 `handl-plugin-codegen-emitter-file` — the `hnl-file` emitter for the
 Handl codegen pipeline: renders `SdkgenModule` IR as `.hnl`
-port/adapter package pairs. Part of the `engine-codegen-*` family
+port/adapter package pairs. Part of the `tool-codegen-*` family
 (PL-004 T-075). Serves the `c` and `webidl` targets, resolved by name
 through the `CodegenRegistry`.
 
