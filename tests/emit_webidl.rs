@@ -123,7 +123,7 @@ fn emits_js_port_and_adapter() {
         "js_void descriptor missing: {adapter}"
     );
     assert!(
-        adapter.contains("e = error()"),
+        adapter.contains("e := error()"),
         "error() call missing: {adapter}"
     );
     assert!(adapter.contains("err(e)"), "err(e) missing: {adapter}");

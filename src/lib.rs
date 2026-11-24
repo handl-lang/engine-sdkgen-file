@@ -684,30 +684,30 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
             let call_descs = call_descs.join(", ");
             match js_dispatch(f, &module.library) {
                 JsDispatch::Call { obj, method } => out.push_str(&format!(
-                    "  r = call(\"{obj}\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                    "  r := call(\"{obj}\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
                 )),
                 JsDispatch::Invoke { recv, method } => out.push_str(&format!(
-                    "  r = invoke({recv}, \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                    "  r := invoke({recv}, \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
                 )),
                 JsDispatch::Construct { method } => out.push_str(&format!(
-                    "  r = construct(\"\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
+                    "  r := construct(\"\", \"{method}\", [{call_args}], [{call_descs}], \"{ret_descriptor}\", false)\n"
                 )),
                 JsDispatch::On { recv, event, arrow } => out.push_str(&format!(
-                    "  r = on({recv}, \"{event}\", {arrow})\n"
+                    "  r := on({recv}, \"{event}\", {arrow})\n"
                 )),
             }
             if matches!(js_dispatch(f, &module.library), JsDispatch::On { .. }) {
                 // `js.on` returns the listener or null on failure and does
                 // not clear `error()` on success — only a null result with
                 // a recorded exception is a failure.
-                out.push_str("  e = error()\n");
+                out.push_str("  e := error()\n");
                 out.push_str("  if r == null && e != null {\n");
                 out.push_str("    err(e)\n");
                 out.push_str("  } else {\n");
                 out.push_str("    ok(r)\n");
                 out.push_str("  }\n");
             } else {
-                out.push_str("  e = error()\n");
+                out.push_str("  e := error()\n");
                 out.push_str("  if e == null {\n");
                 out.push_str("    ok(r)\n");
                 out.push_str("  } else {\n");
@@ -716,7 +716,7 @@ fn build_adapter(module: &SdkgenModule, lib: &str, name: &str, adapter_pkg: &str
             }
         } else {
             out.push_str(&format!(
-                "  r = ffi.call(\"{}\", \"{}\", [{arg_names}], [{descs}], \"{}\", false)\n",
+                "  r := ffi.call(\"{}\", \"{}\", [{arg_names}], [{descs}], \"{}\", false)\n",
                 if module.library.is_empty() {
                     format!("{lib}.so.6")
                 } else {

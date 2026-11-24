@@ -114,38 +114,38 @@ fn emits_worker_dispatch_forms() {
 
     // Constructor → js.construct on the global `Worker`.
     assert!(
-        worker_adapter.contains("r = construct(\"\", \"Worker\", [scriptURL, options]"),
+        worker_adapter.contains("r := construct(\"\", \"Worker\", [scriptURL, options]"),
         "construct call missing:\n{worker_adapter}"
     );
 
     // Instance ops → js.invoke with `self` as receiver.
     assert!(
-        worker_adapter.contains("r = invoke(self, \"terminate\", [], [], \"js_void\", false)"),
+        worker_adapter.contains("r := invoke(self, \"terminate\", [], [], \"js_void\", false)"),
         "invoke(terminate) missing:\n{worker_adapter}"
     );
     // The later `postMessage` overload wins the shared port name.
     assert!(
-        worker_adapter.contains("r = invoke(self, \"postMessage\", [message, options]"),
+        worker_adapter.contains("r := invoke(self, \"postMessage\", [message, options]"),
         "invoke(postMessage) missing:\n{worker_adapter}"
     );
 
     // Static op → js.call on the `Worker` global (no receiver).
     assert!(
-        worker_adapter.contains("r = call(\"Worker\", \"register\", [name]"),
+        worker_adapter.contains("r := call(\"Worker\", \"register\", [name]"),
         "call(register) missing:\n{worker_adapter}"
     );
 
     // `on<event>` attributes → js.on registrations.
     assert!(
-        worker_adapter.contains("r = on(self, \"message\", handler)"),
+        worker_adapter.contains("r := on(self, \"message\", handler)"),
         "on(message) missing:\n{worker_adapter}"
     );
     assert!(
-        worker_adapter.contains("r = on(self, \"messageerror\", handler)"),
+        worker_adapter.contains("r := on(self, \"messageerror\", handler)"),
         "on(messageerror) missing:\n{worker_adapter}"
     );
     assert!(
-        worker_adapter.contains("r = on(self, \"error\", handler)"),
+        worker_adapter.contains("r := on(self, \"error\", handler)"),
         "on(error) missing:\n{worker_adapter}"
     );
 

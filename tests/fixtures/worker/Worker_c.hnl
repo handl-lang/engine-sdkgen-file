@@ -5,8 +5,8 @@ from "result" import { ok, err }
 from "../worker/Worker" import { Worker, WorkerConstructor, WorkerOnerror, WorkerOnmessage, WorkerOnmessageerror, WorkerPostMessage, WorkerRegister, WorkerTerminate }
 
 export worker_constructor: WorkerConstructor := (scriptURL, options) ~> do {
-  r = construct("", "Worker", [scriptURL, options], ["js_object", "js_object"], "js_object", false)
-  e = error()
+  r := construct("", "Worker", [scriptURL, options], ["js_object", "js_object"], "js_object", false)
+  e := error()
   if e == null {
     ok(r)
   } else {
@@ -15,8 +15,8 @@ export worker_constructor: WorkerConstructor := (scriptURL, options) ~> do {
 }
 
 export worker_onerror: WorkerOnerror := (self, handler) ~> do {
-  r = on(self, "error", handler)
-  e = error()
+  r := on(self, "error", handler)
+  e := error()
   if r == null && e != null {
     err(e)
   } else {
@@ -25,8 +25,8 @@ export worker_onerror: WorkerOnerror := (self, handler) ~> do {
 }
 
 export worker_onmessage: WorkerOnmessage := (self, handler) ~> do {
-  r = on(self, "message", handler)
-  e = error()
+  r := on(self, "message", handler)
+  e := error()
   if r == null && e != null {
     err(e)
   } else {
@@ -35,8 +35,8 @@ export worker_onmessage: WorkerOnmessage := (self, handler) ~> do {
 }
 
 export worker_onmessageerror: WorkerOnmessageerror := (self, handler) ~> do {
-  r = on(self, "messageerror", handler)
-  e = error()
+  r := on(self, "messageerror", handler)
+  e := error()
   if r == null && e != null {
     err(e)
   } else {
@@ -45,8 +45,8 @@ export worker_onmessageerror: WorkerOnmessageerror := (self, handler) ~> do {
 }
 
 export worker_post_message: WorkerPostMessage := (self, message, options) ~> do {
-  r = invoke(self, "postMessage", [message, options], ["js_object", "js_object"], "js_void", false)
-  e = error()
+  r := invoke(self, "postMessage", [message, options], ["js_object", "js_object"], "js_void", false)
+  e := error()
   if e == null {
     ok(r)
   } else {
@@ -55,8 +55,8 @@ export worker_post_message: WorkerPostMessage := (self, message, options) ~> do 
 }
 
 export worker_register: WorkerRegister := (name) ~> do {
-  r = call("Worker", "register", [name], ["js_string"], "js_void", false)
-  e = error()
+  r := call("Worker", "register", [name], ["js_string"], "js_void", false)
+  e := error()
   if e == null {
     ok(r)
   } else {
@@ -65,8 +65,8 @@ export worker_register: WorkerRegister := (name) ~> do {
 }
 
 export worker_terminate: WorkerTerminate := (self) ~> do {
-  r = invoke(self, "terminate", [], [], "js_void", false)
-  e = error()
+  r := invoke(self, "terminate", [], [], "js_void", false)
+  e := error()
   if e == null {
     ok(r)
   } else {
