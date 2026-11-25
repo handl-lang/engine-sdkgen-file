@@ -12,22 +12,22 @@ export Worker := {
 }
 
 --- js: Worker.constructor
-export WorkerConstructor: (Handle, Handle) ~[1]~> Result<Handle, JsError>
+export WorkerConstructor: (Handle, Handle) ~>[1] Result<Handle, JsError>
 
 --- js: Worker.onerror
-export WorkerOnerror: (Handle, Handle) ~[1]~> Result<Handle, JsError>
+export WorkerOnerror: (Handle, Handle) ~>[1] Result<Handle, JsError>
 
 --- js: Worker.onmessage
-export WorkerOnmessage: (Handle, Handle) ~[1]~> Result<Handle, JsError>
+export WorkerOnmessage: (Handle, Handle) ~>[1] Result<Handle, JsError>
 
 --- js: Worker.onmessageerror
-export WorkerOnmessageerror: (Handle, Handle) ~[1]~> Result<Handle, JsError>
+export WorkerOnmessageerror: (Handle, Handle) ~>[1] Result<Handle, JsError>
 
 --- js: Worker.postMessage
-export WorkerPostMessage: (Handle, Handle, Handle) ~[1]~> Result<(), JsError>
+export WorkerPostMessage: (Handle, Handle, Handle) ~>[1] Result<(), JsError>
 
 --- js: Worker.register
-export WorkerRegister: (String) ~[1]~> Result<(), JsError>
+export WorkerRegister: (String) ~>[1] Result<(), JsError>
 
 --- js: Worker.terminate
-export WorkerTerminate: (Handle) ~[1]~> Result<(), JsError>
+export WorkerTerminate: (Handle) ~>[1] Result<(), JsError>
